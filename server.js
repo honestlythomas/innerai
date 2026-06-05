@@ -36,31 +36,16 @@ app.use(express.static("public"));
 const MODEL_NAME = "gpt-4.1-mini";
 const SYSTEM_PROMPT = "You are InnerAI, a private personal assistant interface inside a retro-terminal chat sandbox. Be helpful, direct, a little strange, and keep the user safe. Do not claim to be a different model than the server-provided model name.";
 
-function sanitizeChatMessages(messages) {
-  if (!Array.isArray(messages)) return [];
-
-  return messages
-    .slice(-24)
-    .map((message) => {
-      const role = message?.role === "assistant" ? "assistant" : "user";
-      const content = String(message?.content || "").trim();
-      return content ? { role, content } : null;
-    })
-    .filter(Boolean);
-}
-
 app.post("/api/chat", async (req, res) => {
   try {
     const message = req.body?.message;
-    const sanitizedMessages = sanitizeChatMessages(req.body?.messages);
+    const systemPrompt = typeof req.body?.systemPrompt === "string" ? req.body.systemPrompt.trim() : "";
 
-    if ((!message || typeof message !== "string") && sanitizedMessages.length === 0) {
+    if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Missing message." });
     }
 
-    const userMessages = sanitizedMessages.length
-      ? sanitizedMessages
-      : [{ role: "user", content: message }];
+    const effectiveSystemPrompt = systemPrompt || SYSTEM_PROMPT;
 
     console.log("Received /api/chat request");
 
@@ -69,9 +54,12 @@ app.post("/api/chat", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: SYSTEM_PROMPT
+          content: effectiveSystemPrompt
         },
-        ...userMessages
+        {
+          role: "user",
+          content: message
+        }
       ]
     });
 

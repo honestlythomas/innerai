@@ -1860,8 +1860,10 @@ const focusSink = document.getElementById('focusSink');
     // ADDED: Single canonical built-in command registry so command execution, help output,
     // and tab-complete all point at the same source instead of drifting apart.
     const builtInCommands = [
+      { name: '/help', value: '/help', execute: true, desc: 'show the list of available commands' },
       { name: '/clear', value: '/clear', execute: true, desc: 'clear the visible chat messages' },
-      { name: '/nickname', value: '/nickname ', execute: false, desc: 'set the displayed username used by local chat messages', suggestions: ['Tektite', 'Guest', 'User'] }
+      { name: '/nickname', value: '/nickname ', execute: false, desc: 'set the displayed username used by local chat messages', suggestions: ['Tektite', 'Guest', 'User'] },
+      { name: '/system_prompt', value: '/system_prompt ', execute: false, desc: 'show, set, clear, or reset the local system prompt', suggestions: ['show', 'set You are InnerAI, a terse terminal assistant.', 'clear', 'reset'] }
     ];
     const builtInCommandList = builtInCommands.map((entry) => entry.name);
     let pageCommandRegistry = [];
@@ -2218,39 +2220,7 @@ const focusSink = document.getElementById('focusSink');
     }
 
     async function checkApiConnection() {
-      if (apiConnectionCheckPromise) return apiConnectionCheckPromise;
-
-      apiConnectionCheckPromise = (async () => {
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
-
-        try {
-          const payload = {
-            message: 'InnerAI status check.'
-          };
-          console.log("[InnerAI API payload]", payload);
-          const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-          });
-
-          apiConnectionStatus = response.ok ? 'online' : 'offline';
-        } catch (error) {
-          apiConnectionStatus = 'offline';
-        } finally {
-          window.clearTimeout(timeoutId);
-          refreshInitialWelcomeMessage();
-          apiConnectionCheckPromise = null;
-        }
-
-        return apiConnectionStatus;
-      })();
-
-      return apiConnectionCheckPromise;
+      return apiConnectionStatus;
     }
 
     function showChatBar() {
@@ -2259,7 +2229,6 @@ const focusSink = document.getElementById('focusSink');
       document.body.classList.add('chat-open');
       disarmChatInput();
       ensureInitialWelcomeMessage();
-      checkApiConnection();
       requestAnimationFrame(scrollToBottom);
       notifyParentChatSandboxState();
     }
@@ -5244,10 +5213,55 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     function createHelpMessageNode() {
-      return createCommandListMessageNode('/help with commands...', [], {
-        showHiddenCommands: debugMode,
-        panelType: 'help'
+      const wrapper = document.createElement('div');
+      wrapper.dataset.commandPanelType = 'help';
+
+      const title = document.createElement('div');
+      const titleStrong = document.createElement('strong');
+      titleStrong.textContent = '/help with commands...';
+      title.appendChild(titleStrong);
+      wrapper.appendChild(title);
+
+      const helpList = document.createElement('div');
+      helpList.className = 'helpList';
+
+      const commandNames = [
+        '/help',
+        '/clear',
+        '/nickname',
+        '/system_prompt'
+      ];
+
+      commandNames.forEach((commandName) => {
+        const command = builtInCommands.find((entry) => entry.name === commandName);
+        if (!command) return;
+
+        const item = document.createElement('a');
+        item.className = 'helpItem';
+        item.href = '#';
+        item.dataset.command = command.name;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'helpCommandName';
+        nameSpan.textContent = command.name;
+        item.appendChild(nameSpan);
+
+        item.addEventListener('click', (event) => {
+          event.preventDefault();
+          closeActiveCommandPicker();
+          showChatBar();
+          chatBar.value = command.value;
+          moveCursorToEnd();
+          if (command.execute) {
+            submitMessage();
+          }
+        });
+
+        helpList.appendChild(item);
       });
+
+      wrapper.appendChild(helpList);
+      return wrapper;
     }
 
     function createGotoFolderListMessageNode(folders = []) {
@@ -6587,6 +6601,70 @@ function createHomepageCustomizeMessageNode(result = {}) {
       return openDvdLogoPicker();
     }
 
+    const INNERAI_SYSTEM_PROMPT_STORAGE_KEY = 'innerai.systemPrompt.v1';
+
+    function getStoredSystemPrompt() {
+      try {
+        return String(localStorage.getItem(INNERAI_SYSTEM_PROMPT_STORAGE_KEY) || '').trim();
+      } catch (error) {
+        return '';
+      }
+    }
+
+    function setStoredSystemPrompt(value) {
+      const normalized = String(value || '').trim();
+      try {
+        if (normalized) {
+          localStorage.setItem(INNERAI_SYSTEM_PROMPT_STORAGE_KEY, normalized);
+        } else {
+          localStorage.removeItem(INNERAI_SYSTEM_PROMPT_STORAGE_KEY);
+        }
+      } catch (error) {}
+      return normalized;
+    }
+
+    function addSystemPromptStatusMessage(prefix = 'Current system prompt') {
+      const currentPrompt = getStoredSystemPrompt();
+      addSystemMessage(`${prefix}:\n${currentPrompt || '(empty; using app default)'}`);
+    }
+
+    function handleSystemPromptCommand(trimmed, commandToken) {
+      const rest = trimmed.slice(commandToken.length).trim();
+      const firstSpace = rest.search(/\s/);
+      const action = (firstSpace === -1 ? rest : rest.slice(0, firstSpace)).toLowerCase();
+      const value = firstSpace === -1 ? '' : rest.slice(firstSpace + 1).trim();
+
+      if (!action) {
+        addSystemMessage('Usage: /system_prompt show | /system_prompt set <text> | /system_prompt clear | /system_prompt reset');
+        addSystemPromptStatusMessage();
+        return true;
+      }
+
+      if (action === 'show') {
+        addSystemPromptStatusMessage();
+        return true;
+      }
+
+      if (action === 'set') {
+        if (!value) {
+          addSystemMessage('Usage: /system_prompt set <text>');
+          return true;
+        }
+        setStoredSystemPrompt(value);
+        addSystemPromptStatusMessage('System prompt set');
+        return true;
+      }
+
+      if (action === 'clear' || action === 'reset') {
+        setStoredSystemPrompt('');
+        addSystemPromptStatusMessage(action === 'reset' ? 'System prompt reset' : 'System prompt cleared');
+        return true;
+      }
+
+      addSystemMessage('Usage: /system_prompt show | /system_prompt set <text> | /system_prompt clear | /system_prompt reset');
+      return true;
+    }
+
     async function handleCommand(raw) {
       const trimmed = String(raw || '').trim();
       if (!trimmed.startsWith('/')) {
@@ -6616,6 +6694,16 @@ function createHomepageCustomizeMessageNode(result = {}) {
         return true;
       }
 
+      if (command === '/help') {
+        addMessage(createHelpMessageNode(), 'system');
+        requestAnimationFrame(scrollToBottom);
+        return true;
+      }
+
+      if (command === '/system_prompt') {
+        return handleSystemPromptCommand(trimmed, parts[0]);
+      }
+
       return false;
     }
 
@@ -6641,6 +6729,10 @@ function createHomepageCustomizeMessageNode(result = {}) {
       const payload = {
         message: userText
       };
+      const effectiveSystemPrompt = getStoredSystemPrompt();
+      if (effectiveSystemPrompt) {
+        payload.systemPrompt = effectiveSystemPrompt;
+      }
 
       try {
         console.log("[InnerAI API payload]", payload);
@@ -6663,9 +6755,13 @@ function createHomepageCustomizeMessageNode(result = {}) {
           throw new Error(data.error || `Request failed with ${response.status}`);
         }
 
+        apiConnectionStatus = 'online';
+        refreshInitialWelcomeMessage();
         const reply = String(data.reply || '').trim() || '[empty response]';
         setMessageRawContent(pendingLine, `${INNERAI_ASSISTANT_NAME}: ${reply}`, 'user');
       } catch (error) {
+        apiConnectionStatus = 'offline';
+        refreshInitialWelcomeMessage();
         console.error(error);
         setMessageRawContent(
           pendingLine,
@@ -6685,18 +6781,22 @@ function createHomepageCustomizeMessageNode(result = {}) {
       resetHistoryNavigation();
 
       const trimmed = raw.trim();
-      const handled = await handleCommand(raw);
-
-      if (!handled) {
-        if (trimmed.startsWith('/')) {
+      if (trimmed.startsWith("/")) {
+        const handled = await handleCommand(trimmed);
+        if (!handled) {
           const commandToken = trimmed.split(/\s+/)[0];
           addSystemMessage(`${commandToken} is not a known command`);
-        } else {
-          addMessage(`${currentNickname}: ${raw}`, 'user');
-          const pendingLine = addMessage(`${INNERAI_ASSISTANT_NAME}: thinking...`, 'user');
-          askInnerAI(raw, pendingLine);
         }
+        chatBar.value = '';
+        updateChatBarVisualState();
+        resetCommandCycle();
+        hideCommandArgumentSuggestionPopup();
+        return;
       }
+
+      addMessage(`${currentNickname}: ${raw}`, 'user');
+      const pendingLine = addMessage(`${INNERAI_ASSISTANT_NAME}: thinking...`, 'user');
+      askInnerAI(raw, pendingLine);
 
       chatBar.value = '';
       updateChatBarVisualState();
