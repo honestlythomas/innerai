@@ -1859,11 +1859,21 @@ const focusSink = document.getElementById('focusSink');
 
     // ADDED: Single canonical built-in command registry so command execution, help output,
     // and tab-complete all point at the same source instead of drifting apart.
+    const INNERAI_DEFAULT_MODEL = 'gpt-4.1-mini';
+    const INNERAI_ALLOWED_MODELS = [
+      INNERAI_DEFAULT_MODEL,
+      'gpt-4.1',
+      'gpt-5',
+      'gpt-5-mini',
+      'gpt-5.5'
+    ];
+
     const builtInCommands = [
       { name: '/help', value: '/help', execute: true, desc: 'show the list of available commands' },
       { name: '/clear', value: '/clear', execute: true, desc: 'clear the visible chat messages' },
       { name: '/nickname', value: '/nickname ', execute: false, desc: 'set the displayed username used by local chat messages', suggestions: ['Tektite', 'Guest', 'User'] },
-      { name: '/system_prompt', value: '/system_prompt ', execute: false, desc: 'show, set, clear, or reset the local system prompt', suggestions: ['show', 'set You are InnerAI, a terse terminal assistant.', 'clear', 'reset'] }
+      { name: '/system_prompt', value: '/system_prompt ', execute: false, desc: 'show, set, clear, or reset the local system prompt', suggestions: ['show', 'set You are InnerAI, a terse terminal assistant.', 'clear', 'reset'] },
+      { name: '/model', value: '/model ', execute: false, desc: 'show, list, set, clear, or reset the local model selection', suggestions: INNERAI_ALLOWED_MODELS.map((model) => `set ${model}`) }
     ];
     const builtInCommandList = builtInCommands.map((entry) => entry.name);
     let pageCommandRegistry = [];
@@ -5229,7 +5239,8 @@ function createHomepageCustomizeMessageNode(result = {}) {
         '/help',
         '/clear',
         '/nickname',
-        '/system_prompt'
+        '/system_prompt',
+        '/model'
       ];
 
       commandNames.forEach((commandName) => {
@@ -6602,6 +6613,7 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     const INNERAI_SYSTEM_PROMPT_STORAGE_KEY = 'innerai.systemPrompt.v1';
+    const INNERAI_MODEL_STORAGE_KEY = 'innerai.model.v1';
 
     function getStoredSystemPrompt() {
       try {
@@ -6665,6 +6677,84 @@ function createHomepageCustomizeMessageNode(result = {}) {
       return true;
     }
 
+    function getStoredModel() {
+      try {
+        return String(localStorage.getItem(INNERAI_MODEL_STORAGE_KEY) || '').trim();
+      } catch (error) {
+        return '';
+      }
+    }
+
+    function setStoredModel(model) {
+      const normalized = String(model || '').trim();
+      try {
+        if (normalized) {
+          localStorage.setItem(INNERAI_MODEL_STORAGE_KEY, normalized);
+        } else {
+          localStorage.removeItem(INNERAI_MODEL_STORAGE_KEY);
+        }
+      } catch (error) {}
+      return normalized;
+    }
+
+    function getEffectiveModel() {
+      const storedModel = getStoredModel();
+      return INNERAI_ALLOWED_MODELS.includes(storedModel) ? storedModel : INNERAI_DEFAULT_MODEL;
+    }
+
+    function addModelStatusMessage(prefix = 'Current model') {
+      addSystemMessage(`${prefix}: ${getEffectiveModel()}`);
+    }
+
+    function addModelListMessage() {
+      addSystemMessage(`Available models:\n${INNERAI_ALLOWED_MODELS.join('\n')}`);
+    }
+
+    function handleModelCommand(trimmed, commandToken) {
+      const rest = trimmed.slice(commandToken.length).trim();
+      const firstSpace = rest.search(/\s/);
+      const action = (firstSpace === -1 ? rest : rest.slice(0, firstSpace)).toLowerCase();
+      const value = firstSpace === -1 ? '' : rest.slice(firstSpace + 1).trim();
+
+      if (!action) {
+        addModelStatusMessage();
+        addModelListMessage();
+        return true;
+      }
+
+      if (action === 'show') {
+        addModelStatusMessage();
+        return true;
+      }
+
+      if (action === 'list') {
+        addModelListMessage();
+        return true;
+      }
+
+      if (action === 'clear' || action === 'reset') {
+        setStoredModel('');
+        addModelStatusMessage(action === 'reset' ? 'Model reset' : 'Model cleared');
+        return true;
+      }
+
+      const requestedModel = action === 'set' ? value : rest;
+      if (!requestedModel) {
+        addSystemMessage('Usage: /model set <model-id>');
+        return true;
+      }
+
+      if (!INNERAI_ALLOWED_MODELS.includes(requestedModel)) {
+        addSystemMessage(`Unknown model: ${requestedModel}`);
+        addModelListMessage();
+        return true;
+      }
+
+      setStoredModel(requestedModel);
+      addSystemMessage(`Model set: ${requestedModel}`);
+      return true;
+    }
+
     async function handleCommand(raw) {
       const trimmed = String(raw || '').trim();
       if (!trimmed.startsWith('/')) {
@@ -6704,6 +6794,10 @@ function createHomepageCustomizeMessageNode(result = {}) {
         return handleSystemPromptCommand(trimmed, parts[0]);
       }
 
+      if (command === '/model') {
+        return handleModelCommand(trimmed, parts[0]);
+      }
+
       return false;
     }
 
@@ -6727,7 +6821,8 @@ function createHomepageCustomizeMessageNode(result = {}) {
 
     async function askInnerAI(userText, pendingLine) {
       const payload = {
-        message: userText
+        message: userText,
+        model: getEffectiveModel()
       };
       const effectiveSystemPrompt = getStoredSystemPrompt();
       if (effectiveSystemPrompt) {
