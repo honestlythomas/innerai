@@ -4,6 +4,23 @@ import OpenAI from "openai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const ALLOWED_HOSTS = new Set([
+  "innerai.me",
+  "www.innerai.me",
+  "localhost:3000",
+  "127.0.0.1:3000"
+]);
+
+app.use((req, res, next) => {
+  const host = (req.headers.host || "").toLowerCase().replace(/\.$/, "");
+
+  if (!ALLOWED_HOSTS.has(host)) {
+    return res.status(403).send("Forbidden.");
+  }
+
+  next();
+});
+
 if (!process.env.OPENAI_API_KEY) {
   console.warn("Missing OPENAI_API_KEY environment variable.");
 }
