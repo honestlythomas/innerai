@@ -2156,8 +2156,16 @@ const focusSink = document.getElementById('focusSink');
       return `InnerAI online. ${environmentStatus} Ask the oracle.`;
     }
 
+    function getStandingByWelcomeMessage() {
+      const environmentStatus = isLocalHostname() ? LOCAL_WELCOME_STATUS_MESSAGE : PRODUCTION_WELCOME_STATUS_MESSAGE;
+      const oracleSuffix = isLocalHostname() ? ' Ask the oracle.' : '';
+      return `InnerAI standing by. ${environmentStatus}${oracleSuffix}`;
+    }
+
     function getDefaultWelcomeMessage() {
-      return apiConnectionStatus === 'online' ? getOnlineWelcomeMessage() : OFFLINE_WELCOME_MESSAGE;
+      if (apiConnectionStatus === 'online') return getOnlineWelcomeMessage();
+      if (apiConnectionStatus === 'offline') return OFFLINE_WELCOME_MESSAGE;
+      return getStandingByWelcomeMessage();
     }
 
     let initialWelcomeMessage = getDefaultWelcomeMessage();
@@ -2172,20 +2180,33 @@ const focusSink = document.getElementById('focusSink');
       messageText.textContent = getSystemBaseText(normalizedWelcome);
     }
 
+    function isWelcomeMessageLine(line, normalizedWelcome) {
+      if (!line || !line.dataset || line.dataset.role !== 'system') return false;
+      if (line.dataset.welcomeMessage === 'true') return true;
+      const raw = (line.dataset.rawContent || '').trim();
+      const rendered = (line.querySelector('.messageText')?.textContent || '').trim();
+      const onlineWelcome = normalizeWelcomeMessage(getOnlineWelcomeMessage());
+      const standingByWelcome = normalizeWelcomeMessage(getStandingByWelcomeMessage());
+      const offlineWelcome = normalizeWelcomeMessage(OFFLINE_WELCOME_MESSAGE);
+      const onlineText = getSystemBaseText(onlineWelcome);
+      const standingByText = getSystemBaseText(standingByWelcome);
+      const offlineText = getSystemBaseText(offlineWelcome);
+      return raw === onlineWelcome ||
+        raw === standingByWelcome ||
+        raw === offlineWelcome ||
+        raw === normalizedWelcome ||
+        rendered === onlineText ||
+        rendered === standingByText ||
+        rendered === offlineText ||
+        rendered === getSystemBaseText(normalizedWelcome);
+    }
+
     function ensureInitialWelcomeMessage() {
       const normalizedWelcome = normalizeWelcomeMessage(initialWelcomeMessage);
       initialWelcomeMessage = normalizedWelcome;
       const systemMessages = Array.from(messages.querySelectorAll('.message[data-role="system"]'));
-      const welcomeMessages = systemMessages.filter((line) => {
-        if (line.dataset.welcomeMessage === 'true') return true;
-        const raw = (line.dataset.rawContent || '').trim();
-        return raw === normalizeWelcomeMessage(getOnlineWelcomeMessage()) ||
-          raw === normalizeWelcomeMessage(OFFLINE_WELCOME_MESSAGE) ||
-          raw === normalizedWelcome;
-      });
-      const existingWelcomeMessage = welcomeMessages.find((line) => {
-        return (line.dataset.rawContent || '').trim() === normalizedWelcome;
-      });
+      const welcomeMessages = systemMessages.filter((line) => isWelcomeMessageLine(line, normalizedWelcome));
+      const existingWelcomeMessage = welcomeMessages[0] || null;
 
       welcomeMessages.forEach((line) => {
         if (line !== existingWelcomeMessage) {
