@@ -148,6 +148,84 @@
       font-weight: 700;
     }
 
+    .assistant-markdown {
+      display: inline-block;
+      max-width: 100%;
+      vertical-align: top;
+      white-space: normal;
+    }
+
+    .assistant-markdown p {
+      margin: 0 0 0.75em 0;
+    }
+
+    .assistant-markdown p:last-child,
+    .assistant-markdown ul:last-child,
+    .assistant-markdown ol:last-child,
+    .assistant-markdown pre:last-child,
+    .assistant-markdown blockquote:last-child {
+      margin-bottom: 0;
+    }
+
+    .assistant-markdown ul,
+    .assistant-markdown ol {
+      margin: 0.35em 0 0.75em 1.4em;
+      padding: 0;
+    }
+
+    .assistant-markdown li {
+      margin: 0.2em 0;
+    }
+
+    .assistant-markdown code {
+      padding: 0.08em 0.32em;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e8e8e8;
+      font-family: inherit;
+      font-size: 0.92em;
+      white-space: break-spaces;
+    }
+
+    .assistant-markdown pre {
+      margin: 0.45em 0 0.85em 0;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.26);
+      background: rgba(0, 0, 0, 0.62);
+      color: #f0f0f0;
+      overflow-x: auto;
+      white-space: pre;
+      max-width: 100%;
+    }
+
+    .assistant-markdown pre code {
+      display: block;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      white-space: pre;
+    }
+
+    .assistant-markdown blockquote {
+      margin: 0.45em 0 0.85em 0;
+      padding: 0.1em 0 0.1em 0.85em;
+      border-left: 3px solid rgba(255, 255, 255, 0.42);
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    .assistant-markdown a,
+    .assistant-markdown a:visited {
+      color: #00ffff;
+      text-decoration: underline;
+    }
+
+    .assistant-markdown a:hover,
+    .assistant-markdown a:focus {
+      outline: none;
+      text-decoration-thickness: 2px;
+    }
+
     .helpList {
       margin-top: 8px;
     }
@@ -2896,6 +2974,207 @@ const focusSink = document.getElementById('focusSink');
       return prefixSpan;
     }
 
+    function isSafeAssistantLink(rawHref) {
+      try {
+        const url = new URL(String(rawHref || '').trim(), window.location.href);
+        return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'mailto:';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function appendAssistantInlineMarkdown(parentNode, text) {
+      const source = String(text || '');
+      const pattern = /(`([^`\n]+)`)|(\[([^\]\n]+)\]\(([^)\s]+)\))|(\*\*([^*\n]+)\*\*)|(\*([^*\n]+)\*)/g;
+      let lastIndex = 0;
+      let match;
+
+      while ((match = pattern.exec(source)) !== null) {
+        if (match.index > lastIndex) {
+          parentNode.appendChild(document.createTextNode(source.slice(lastIndex, match.index)));
+        }
+
+        if (match[2] !== undefined) {
+          const code = document.createElement('code');
+          code.textContent = match[2];
+          parentNode.appendChild(code);
+        } else if (match[4] !== undefined && match[5] !== undefined) {
+          if (isSafeAssistantLink(match[5])) {
+            const link = document.createElement('a');
+            link.href = match[5];
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = match[4];
+            parentNode.appendChild(link);
+          } else {
+            parentNode.appendChild(document.createTextNode(match[0]));
+          }
+        } else if (match[7] !== undefined) {
+          const strong = document.createElement('strong');
+          strong.textContent = match[7];
+          parentNode.appendChild(strong);
+        } else if (match[9] !== undefined) {
+          const emphasis = document.createElement('em');
+          emphasis.textContent = match[9];
+          parentNode.appendChild(emphasis);
+        } else {
+          parentNode.appendChild(document.createTextNode(match[0]));
+        }
+
+        lastIndex = pattern.lastIndex;
+      }
+
+      if (lastIndex < source.length) {
+        parentNode.appendChild(document.createTextNode(source.slice(lastIndex)));
+      }
+    }
+
+    function appendAssistantParagraph(parentNode, lines) {
+      if (!lines.length) return;
+      const paragraph = document.createElement('p');
+      lines.forEach((line, index) => {
+        if (index > 0) paragraph.appendChild(document.createElement('br'));
+        appendAssistantInlineMarkdown(paragraph, line);
+      });
+      parentNode.appendChild(paragraph);
+    }
+
+    function appendAssistantList(parentNode, lines, ordered) {
+      if (!lines.length) return;
+      const list = document.createElement(ordered ? 'ol' : 'ul');
+      lines.forEach((line) => {
+        const item = document.createElement('li');
+        appendAssistantInlineMarkdown(item, line);
+        list.appendChild(item);
+      });
+      parentNode.appendChild(list);
+    }
+
+    function appendAssistantBlockquote(parentNode, lines) {
+      if (!lines.length) return;
+      const quote = document.createElement('blockquote');
+      lines.forEach((line, index) => {
+        if (index > 0) quote.appendChild(document.createElement('br'));
+        appendAssistantInlineMarkdown(quote, line);
+      });
+      parentNode.appendChild(quote);
+    }
+
+    function appendAssistantCodeBlock(parentNode, codeText, language = '') {
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      if (language) code.dataset.language = language;
+      code.textContent = codeText.replace(/\n$/, '');
+      pre.appendChild(code);
+      parentNode.appendChild(pre);
+    }
+
+    function renderAssistantMarkdown(text) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'assistant-markdown';
+      const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+      let paragraphLines = [];
+      let listLines = [];
+      let listOrdered = false;
+      let quoteLines = [];
+      let inFence = false;
+      let fenceLanguage = '';
+      let fenceLines = [];
+
+      const flushParagraph = () => {
+        appendAssistantParagraph(wrapper, paragraphLines);
+        paragraphLines = [];
+      };
+      const flushList = () => {
+        appendAssistantList(wrapper, listLines, listOrdered);
+        listLines = [];
+        listOrdered = false;
+      };
+      const flushQuote = () => {
+        appendAssistantBlockquote(wrapper, quoteLines);
+        quoteLines = [];
+      };
+      const flushAllTextBlocks = () => {
+        flushParagraph();
+        flushList();
+        flushQuote();
+      };
+
+      lines.forEach((line) => {
+        const fenceMatch = line.match(/^```([A-Za-z0-9_-]+)?\s*$/);
+        if (fenceMatch) {
+          if (inFence) {
+            appendAssistantCodeBlock(wrapper, fenceLines.join('\n'), fenceLanguage);
+            inFence = false;
+            fenceLanguage = '';
+            fenceLines = [];
+          } else {
+            flushAllTextBlocks();
+            inFence = true;
+            fenceLanguage = fenceMatch[1] || '';
+            fenceLines = [];
+          }
+          return;
+        }
+
+        if (inFence) {
+          fenceLines.push(line);
+          return;
+        }
+
+        if (!line.trim()) {
+          flushAllTextBlocks();
+          return;
+        }
+
+        const bulletMatch = line.match(/^\s*[-*]\s+(.+)$/);
+        if (bulletMatch) {
+          flushParagraph();
+          flushQuote();
+          if (listLines.length && listOrdered) flushList();
+          listOrdered = false;
+          listLines.push(bulletMatch[1]);
+          return;
+        }
+
+        const orderedMatch = line.match(/^\s*\d+\.\s+(.+)$/);
+        if (orderedMatch) {
+          flushParagraph();
+          flushQuote();
+          if (listLines.length && !listOrdered) flushList();
+          listOrdered = true;
+          listLines.push(orderedMatch[1]);
+          return;
+        }
+
+        const quoteMatch = line.match(/^\s*>\s?(.*)$/);
+        if (quoteMatch) {
+          flushParagraph();
+          flushList();
+          quoteLines.push(quoteMatch[1]);
+          return;
+        }
+
+        flushList();
+        flushQuote();
+        paragraphLines.push(line);
+      });
+
+      if (inFence) {
+        appendAssistantCodeBlock(wrapper, fenceLines.join('\n'), fenceLanguage);
+      }
+      flushAllTextBlocks();
+
+      if (!wrapper.childNodes.length) {
+        wrapper.textContent = String(text || '');
+      }
+      return wrapper;
+    }
+
+    function appendRenderedAssistantMessage(parentNode, text) {
+      parentNode.appendChild(renderAssistantMarkdown(text));
+    }
+
     function renderUserMessage(line, messageTextEl = null) {
       const rawContent = line.dataset.rawContent || '';
       const separatorIndex = rawContent.indexOf(':');
@@ -2909,7 +3188,14 @@ const focusSink = document.getElementById('focusSink');
       const bodyText = rawContent.slice(separatorIndex + 1).replace(/^\s*/, '');
       messageText.innerHTML = '';
       appendSpeakerPrefix(messageText, `${nickname}:`, 'nicknameLabel');
-      messageText.appendChild(document.createTextNode(bodyText ? ` ${bodyText}` : ''));
+      if (nickname === 'InnerAI') {
+        if (bodyText) {
+          messageText.appendChild(document.createTextNode(' '));
+          appendRenderedAssistantMessage(messageText, bodyText);
+        }
+      } else {
+        messageText.appendChild(document.createTextNode(bodyText ? ` ${bodyText}` : ''));
+      }
     }
 
     function formatTimestamp(date = new Date()) {
@@ -2974,7 +3260,7 @@ const focusSink = document.getElementById('focusSink');
       row.className = 'messageRow';
 
       const messageText = document.createElement('div');
-      messageText.className = 'messageText';
+      messageText.className = 'messageText message-content';
 
       if (content instanceof Node) {
         if (content && content.dataset && content.dataset.commandPanelType) {
