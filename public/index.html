@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>innerai</title>
+  <style>
+    :root {
+      --bg: #120018;
+      --panel: #050008;
+      --text: #b6ff6a;
+      --purple: #7b2cff;
+      --muted: #d8b8ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(123, 44, 255, 0.22), transparent 34rem),
+        linear-gradient(180deg, #120018 0%, #050008 100%);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 2rem;
+    }
+
+    main {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--purple);
+      background: rgba(5, 0, 8, 0.82);
+      box-shadow: 0 0 40px rgba(123, 44, 255, 0.22);
+      padding: 1.5rem;
+    }
+
+    h1 {
+      margin-top: 0;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: lowercase;
+    }
+
+    p {
+      line-height: 1.5;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--purple);
+      padding: 1rem;
+      font: inherit;
+      outline: none;
+    }
+
+    textarea:focus {
+      box-shadow: 0 0 0 2px rgba(123, 44, 255, 0.35);
+    }
+
+    button {
+      margin-top: 1rem;
+      background: var(--purple);
+      color: white;
+      border: 0;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: var(--panel);
+      border: 1px solid var(--purple);
+      padding: 1rem;
+      margin-top: 1rem;
+      min-height: 120px;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>innerai</h1>
+    <p>Private interface. Haunted machine room. API key stays server-side, because we are not feeding billing credentials to raccoons.</p>
+
+    <textarea id="message" placeholder="Type something into the static..."></textarea>
+    <br />
+    <button id="send">Send</button>
+
+    <p class="status" id="status">Ready.</p>
+    <pre id="reply"></pre>
+  </main>
+
+  <script>
+    const button = document.getElementById("send");
+    const messageBox = document.getElementById("message");
+    const replyBox = document.getElementById("reply");
+    const statusBox = document.getElementById("status");
+
+    button.addEventListener("click", async () => {
+      const message = messageBox.value.trim();
+
+      if (!message) {
+        statusBox.textContent = "Type something first. The void needs input.";
+        return;
+      }
+
+      button.disabled = true;
+      statusBox.textContent = "Thinking...";
+      replyBox.textContent = "";
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ message })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Request failed.");
+        }
+
+        replyBox.textContent = data.reply || "No response.";
+        statusBox.textContent = "Done.";
+      } catch (err) {
+        replyBox.textContent = err.message || "Something broke.";
+        statusBox.textContent = "Error.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
