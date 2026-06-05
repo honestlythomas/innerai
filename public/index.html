@@ -1704,7 +1704,7 @@
       <input
         id="chatBar"
         type="text"
-        placeholder="Press here to chat or / for commands..."
+        placeholder="Press here to chat..."
         autocomplete="off"
         spellcheck="false"
       />
@@ -1860,35 +1860,8 @@ const focusSink = document.getElementById('focusSink');
     // ADDED: Single canonical built-in command registry so command execution, help output,
     // and tab-complete all point at the same source instead of drifting apart.
     const builtInCommands = [
-      { name: '/upload_file', value: '/upload_file', execute: true, desc: 'open a file picker to embed one file into chat' },
-      { name: '/upload_folder', value: '/upload_folder', execute: true, desc: 'open a folder picker to browse and embed local files' },
       { name: '/clear', value: '/clear', execute: true, desc: 'clear the visible chat messages' },
-      { name: '/color', value: '/color', execute: true, desc: 'show only the color commands' },
-      { name: '/color_hueshift', value: '/color_hueshift', execute: true, desc: 'toggle a global hue shift and override local hue-shift effects while active' },
-      { name: '/color_invert', value: '/color_invert', execute: true, desc: 'toggle a global full-color invert on or off' },
-      { name: '/color_party', value: '/color_party', execute: true, desc: 'toggle hue shift plus auto-randomize and random invert flicker on or off' },
-      { name: '/customize', value: '/customize', execute: true, desc: 'open the customize panel for colors, opacity, font, and scale' },
-      { name: '/debug', value: '/debug', execute: true, desc: 'toggle debug mode and system label visibility' },
-      { name: '/dvd', value: '/dvd', execute: true, desc: 'show only the DVD commands' },
-      { name: '/dvd_spawn', value: '/dvd_spawn', execute: true, desc: 'spawn another bouncing hue-shifting DVD logo from the default SVG, up to 10 total' },
-      { name: '/dvd_image', value: '/dvd_image ', execute: false, desc: 'upload one or more images and immediately spawn them as bouncing images, or paste quoted image URLs', suggestions: ['"https://example.com/image.png"', '"https://example.com/image1.png, https://example.com/image2.png"'] },
-      { name: '/spawn', value: '/spawn ', execute: false, desc: 'upload and spawn one or more bouncing images, adding them to the active swarm', suggestions: ['"https://example.com/image.png"', '"https://example.com/image1.png, https://example.com/image2.png"'] },
-      { name: '/subscribe', value: '/subscribe', execute: true, desc: 'spawn a subscribe swarm linked to YouTube and immediately overclock it to infinite mode' },
-      { name: '/dvd_slideshow', value: '/dvd_slideshow', execute: true, desc: 'spawn every GIF from the shooter-game enemy GIF assets as its own bouncing slideshow swarm' },
-      { name: '/exit', value: '/exit', execute: true, desc: 'kill the page and trigger the fatal exit screen' },
-      { name: '/help', value: '/help', execute: true, desc: 'show this help message with command links' },
-      { name: '/iframe', value: '/iframe ', execute: false, desc: 'paste a URL after it to embed a webpage preview', suggestions: ['https://example.com/'] },
-      { name: '/script_load', value: '/script_load', execute: true, desc: 'choose a .txt file and send each line into chat every 0.33 seconds' },
-      { name: '/settings_load', value: '/settings_load', execute: true, desc: 'choose a settings.json file and load saved settings' },
-      { name: '/nickname', value: '/nickname ', execute: false, desc: 'set the displayed username used by system messages', suggestions: ['Tektite', 'Guest', 'User'] },
-      { name: '/color_randomize', value: '/color_randomize', execute: true, desc: 'toggle the automatic random color shuffle on or off' },
-      { name: '/color_reset', value: '/color_reset', execute: true, desc: 'restore default appearance settings' },
-      { name: '/settings_save', value: '/settings_save', execute: true, desc: 'download a settings.json with the current command-configurable state' },
-      { name: '/screenshot', value: '/screenshot', execute: true, desc: 'save a PNG of the visible page, ignoring chat' },
-      { name: '/screenshot_animation', value: '/screenshot_animation', execute: true, desc: 'save 15 full-page PNG frames in a ZIP using the same timing as /color_randomize and /color_party' },
-      { name: '/refresh', value: '/refresh', execute: true, desc: 'refresh the current page' },
-      { name: '/stop', value: '/stop', execute: true, desc: 'stop auto color shuffle, script playback, hue shift, and invert effects' },
-      { name: '/clock', value: '/clock', execute: true, desc: 'show only the clock commands' }
+      { name: '/nickname', value: '/nickname ', execute: false, desc: 'set the displayed username used by local chat messages', suggestions: ['Tektite', 'Guest', 'User'] }
     ];
     const builtInCommandList = builtInCommands.map((entry) => entry.name);
     let pageCommandRegistry = [];
@@ -2152,13 +2125,39 @@ const focusSink = document.getElementById('focusSink');
       }
     }
 
-    const DEFAULT_WELCOME_MESSAGE = 'System: innerai online. Cloudflare gate sealed. Render coffin awake. Ask the oracle.';
-    let initialWelcomeMessage = DEFAULT_WELCOME_MESSAGE;
+    const LOCAL_WELCOME_STATUS_MESSAGE = 'localhost server running.';
+    const PRODUCTION_WELCOME_STATUS_MESSAGE = 'Cloudflare gate sealed. Render coffin awake.';
+    const OFFLINE_WELCOME_MESSAGE = 'InnerAI offline. The oracle is unavailable.';
+    let apiConnectionStatus = 'unknown';
+    let apiConnectionCheckPromise = null;
+
+    function isLocalHostname(hostname = window.location.hostname) {
+      const normalized = String(hostname || '').trim().toLowerCase();
+      return normalized === 'localhost' ||
+        normalized === '127.0.0.1' ||
+        normalized === '::1' ||
+        normalized === '[::1]';
+    }
+
+    function getOnlineWelcomeMessage() {
+      const environmentStatus = isLocalHostname() ? LOCAL_WELCOME_STATUS_MESSAGE : PRODUCTION_WELCOME_STATUS_MESSAGE;
+      return `InnerAI online. ${environmentStatus} Ask the oracle.`;
+    }
+
+    function getDefaultWelcomeMessage() {
+      return apiConnectionStatus === 'online' ? getOnlineWelcomeMessage() : OFFLINE_WELCOME_MESSAGE;
+    }
+
+    let initialWelcomeMessage = getDefaultWelcomeMessage();
 
     function normalizeWelcomeMessage(text) {
       const trimmed = String(text || '').trim();
-      if (!trimmed) return DEFAULT_WELCOME_MESSAGE;
+      if (!trimmed) return getDefaultWelcomeMessage();
       return trimmed.startsWith('System: ') ? trimmed : `System: ${trimmed}`;
+    }
+
+    function renderWelcomeMessageText(messageText, normalizedWelcome) {
+      messageText.textContent = getSystemBaseText(normalizedWelcome);
     }
 
     function ensureInitialWelcomeMessage() {
@@ -2168,7 +2167,9 @@ const focusSink = document.getElementById('focusSink');
       const welcomeMessages = systemMessages.filter((line) => {
         if (line.dataset.welcomeMessage === 'true') return true;
         const raw = (line.dataset.rawContent || '').trim();
-        return raw === DEFAULT_WELCOME_MESSAGE || raw === normalizedWelcome;
+        return raw === normalizeWelcomeMessage(getOnlineWelcomeMessage()) ||
+          raw === normalizeWelcomeMessage(OFFLINE_WELCOME_MESSAGE) ||
+          raw === normalizedWelcome;
       });
       const existingWelcomeMessage = welcomeMessages.find((line) => {
         return (line.dataset.rawContent || '').trim() === normalizedWelcome;
@@ -2185,7 +2186,7 @@ const focusSink = document.getElementById('focusSink');
         existingWelcomeMessage.dataset.rawContent = normalizedWelcome;
         const messageText = existingWelcomeMessage.querySelector('.messageText');
         if (messageText) {
-          appendStyledSystemText(messageText, normalizedWelcome);
+          renderWelcomeMessageText(messageText, normalizedWelcome);
         }
         if (messages.firstElementChild !== existingWelcomeMessage) {
           messages.insertBefore(existingWelcomeMessage, messages.firstElementChild);
@@ -2199,7 +2200,7 @@ const focusSink = document.getElementById('focusSink');
         line.dataset.rawContent = normalizedWelcome;
         const messageText = line.querySelector('.messageText');
         if (messageText) {
-          appendStyledSystemText(messageText, normalizedWelcome);
+          renderWelcomeMessageText(messageText, normalizedWelcome);
         }
       }
       if (line && messages.firstElementChild !== line) {
@@ -2208,12 +2209,57 @@ const focusSink = document.getElementById('focusSink');
       return line;
     }
 
+    function refreshInitialWelcomeMessage() {
+      initialWelcomeMessage = getDefaultWelcomeMessage();
+      if (chatBarWrap.classList.contains('visible')) {
+        ensureInitialWelcomeMessage();
+        requestAnimationFrame(scrollToBottom);
+      }
+    }
+
+    async function checkApiConnection() {
+      if (apiConnectionCheckPromise) return apiConnectionCheckPromise;
+
+      apiConnectionCheckPromise = (async () => {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+        try {
+          const payload = {
+            message: 'InnerAI status check.'
+          };
+          console.log("[InnerAI API payload]", payload);
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+
+          apiConnectionStatus = response.ok ? 'online' : 'offline';
+        } catch (error) {
+          apiConnectionStatus = 'offline';
+        } finally {
+          window.clearTimeout(timeoutId);
+          refreshInitialWelcomeMessage();
+          apiConnectionCheckPromise = null;
+        }
+
+        return apiConnectionStatus;
+      })();
+
+      return apiConnectionCheckPromise;
+    }
+
     function showChatBar() {
       if (isScreenshotAnimationLocked()) return;
       chatBarWrap.classList.add('visible');
       document.body.classList.add('chat-open');
       disarmChatInput();
       ensureInitialWelcomeMessage();
+      checkApiConnection();
       requestAnimationFrame(scrollToBottom);
       notifyParentChatSandboxState();
     }
@@ -4219,15 +4265,7 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     function getCommandCatalog() {
-      // Hidden page commands remain executable through the command handler, but they
-      // are intentionally excluded from inline autocomplete and Tab suggestions.
-      const pageCommands = pageCommandRegistry
-        .filter((entry) => entry.hidden !== true)
-        .map((entry) => entry.name);
-      if (document.body.classList.contains('embedded') && pageCommandMeta.pageOnly) {
-        return Array.from(new Set(['/help', ...pageCommands])).sort((a, b) => a.localeCompare(b));
-      }
-      return Array.from(new Set([...builtInCommandList, ...pageCommands])).sort((a, b) => a.localeCompare(b));
+      return builtInCommandList.slice().sort((a, b) => a.localeCompare(b));
     }
 
     function setPageCommands(payload = []) {
@@ -4272,24 +4310,19 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     function getMergedHelpCommands() {
-      const showPageOnlyHelp = document.body.classList.contains('embedded') && pageCommandMeta.pageOnly && pageCommandRegistry.length > 0;
-      const pageCommands = pageCommandRegistry.map((entry) => ({
-        fromPage: true,
-        name: entry.name,
-        value: entry.usage || entry.name,
-        execute: entry.execute !== false,
-        desc: entry.desc || 'page command',
-        hidden: entry.hidden === true,
-        suggestions: Array.isArray(entry.suggestions) ? entry.suggestions.slice() : []
-      }));
-      const helpCommand = builtInCommands.find((entry) => entry.name === '/help');
-      const mergedCommands = showPageOnlyHelp ? [helpCommand, ...pageCommands].filter(Boolean) : [...builtInCommands, ...pageCommands];
-      return Array.from(mergedCommands.reduce((map, entry) => {
-        const key = String(entry.name || '').toLowerCase();
-        if (!key) return map;
-        if (!map.has(key) || entry.fromPage) map.set(key, entry);
-        return map;
-      }, new Map()).values()).sort((a, b) => a.name.localeCompare(b.name));
+      const merged = new Map();
+      builtInCommands.forEach((command) => {
+        merged.set(command.name, command);
+      });
+      pageCommandRegistry.forEach((command) => {
+        if (command.replaceBuiltIn || !merged.has(command.name)) {
+          merged.set(command.name, {
+            ...command,
+            value: command.usage || command.name
+          });
+        }
+      });
+      return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
     }
 
     function shouldHideHelpCommandByDefault(commandName) {
@@ -5211,7 +5244,7 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     function createHelpMessageNode() {
-      return createCommandListMessageNode('Help with commands...', [], {
+      return createCommandListMessageNode('/help with commands...', [], {
         showHiddenCommands: debugMode,
         panelType: 'help'
       });
@@ -6555,22 +6588,13 @@ function createHomepageCustomizeMessageNode(result = {}) {
     }
 
     async function handleCommand(raw) {
-      const trimmed = raw.trim();
-      const parts = trimmed.split(/\s+/);
-      const command = parts[0].toLowerCase();
-      const pageCommand = getPageCommandDefinition(command);
-      const embeddedPageOnly = document.body.classList.contains('embedded') && pageCommandMeta.pageOnly;
-      // MODIFIED: Only let the parent override a built-in when it explicitly says so.
-      const preferPageCommand = document.body.classList.contains('embedded') && !!pageCommand && (embeddedPageOnly || pageCommand.replaceBuiltIn === true);
-
-      if (preferPageCommand) {
-        dispatchPageCommand(command, trimmed, parts.slice(1));
-        return true;
-      }
-
-      if (embeddedPageOnly && trimmed.startsWith('/') && command !== '/help') {
+      const trimmed = String(raw || '').trim();
+      if (!trimmed.startsWith('/')) {
         return false;
       }
+
+      const parts = trimmed.split(/\s+/);
+      const command = parts[0].toLowerCase();
 
       if (command === '/nickname') {
         const newNickname = trimmed.slice(parts[0].length).trim();
@@ -6579,374 +6603,6 @@ function createHomepageCustomizeMessageNode(result = {}) {
           saveNickname(newNickname);
           addSystemMessage(formatCommandExecutionMessage('/nickname', 'executed', newNickname));
         }
-        return true;
-      }
-
-      if (command === '/debug') {
-        if (debugMode) {
-          showSystemPrefix = true;
-          setDebugMode(false);
-          refreshVisibleHelpMessages();
-          addSystemMessage(formatCommandExecutionMessage('/debug', 'disabled'));
-        } else {
-          showSystemPrefix = true;
-          setDebugMode(true);
-          refreshVisibleHelpMessages();
-          addSystemMessage(formatCommandExecutionMessage('/debug', 'enabled'));
-        }
-        return true;
-      }
-
-      if (command === '/clock') {
-        addSystemMessage(formatCommandExecutionMessage('/clock'));
-        addMessage(createCommandListMessageNode('Clock commands...', [
-          '/clock_time',
-          '/clock_date',
-          '/clock_reset',
-          '/clock_zone'
-        ], {
-          panelType: 'clock'
-        }), 'system');
-        return true;
-      }
-
-      if (command === '/color') {
-        addSystemMessage(formatCommandExecutionMessage('/color'));
-        addMessage(createCommandListMessageNode('Color commands...', [
-          '/color_hueshift',
-          '/color_invert',
-          '/color_party',
-          '/color_randomize',
-          '/color_reset',
-          '/color_element'
-        ], {
-          panelType: 'color'
-        }), 'system');
-        return true;
-      }
-
-      if (command === '/help') {
-        addSystemMessage(formatCommandExecutionMessage('/help'));
-        const existingHelpMessage = Array.from(messages.querySelectorAll('.message[data-role="system"][data-command-panel-type="help"]')).at(-1) || null;
-        if (existingHelpMessage && !debugMode) {
-          const messageText = existingHelpMessage.querySelector('.messageText');
-          if (messageText) {
-            existingHelpMessage.dataset.commandPanelType = 'help';
-            messageText.innerHTML = '';
-            messageText.appendChild(createHelpMessageNode());
-          }
-        } else {
-          addMessage(createHelpMessageNode(), 'system');
-        }
-        return true;
-      }
-
-      if (command === '/dvd') {
-        addSystemMessage(formatCommandExecutionMessage('/dvd'));
-        addMessage(createCommandListMessageNode('DVD commands...', [
-          '/dvd_spawn',
-          '/dvd_image',
-          '/dvd_slideshow'
-        ], {
-          panelType: 'dvd'
-        }), 'system');
-        return true;
-      }
-
-      if (command === '/dvd_spawn') {
-        const currentAttempts = getDvdCommandAttemptCount();
-        const nextAttempt = currentAttempts + 1;
-        dvdCommandAttemptCount = nextAttempt;
-
-        if (nextAttempt >= 13 && !dvdOverclockMode) {
-          addDvdOverclockSystemMessage();
-          startDvdOverclockMode();
-          if (dvdInstances.length < dvdNormalMaxInstances) {
-            ensureDvdInstanceCount(dvdNormalMaxInstances);
-          }
-          setDvdEnabled(true);
-          return true;
-        }
-
-        if (dvdOverclockMode) {
-          return true;
-        }
-
-        if (nextAttempt === 12) {
-          primeDvdOverclockCycle();
-          addPersonalizedSystemWarningMessage(
-            'Really',
-            ", you don't want to see what happens if you spawn more than 10 of those... Fine, send it one more time, see what happens smartass."
-          );
-          return true;
-        }
-
-        if (nextAttempt === 11) {
-          addPersonalizedSystemWarningMessage('Why would you want more than 10 of those,', '?');
-          return true;
-        }
-
-        spawnDvdInstance();
-        addSystemMessage(formatCommandExecutionMessage('/dvd_spawn'), { repeatCount: nextAttempt, repeatLabel: nextAttempt >= dvdNormalMaxInstances ? 'MAX' : '' });
-        return true;
-      }
-
-      if (command === '/dvd_image') {
-        dvdUploadMode = 'dvd_image';
-        const urlArg = trimmed.slice(parts[0].length).trim();
-        if (urlArg) {
-          const sources = parseDvdLogoUrlList(urlArg);
-          const applied = addSpawnedDvdSources(sources);
-          addSystemMessage(formatCommandExecutionMessage('/dvd_image', applied ? 'executed' : 'failed'));
-          return true;
-        }
-        const opened = openDvdLogoPicker();
-        addSystemMessage(formatCommandExecutionMessage('/dvd_image', opened ? 'executed' : 'failed'));
-        return true;
-      }
-
-      if (command === '/subscribe') {
-        const applied = applySubscribeMode();
-        addSystemMessage(formatCommandExecutionMessage('/subscribe', applied ? 'executed' : 'failed'), { repeatLabel: applied ? 'INFINITE' : '' });
-        return true;
-      }
-
-      if (command === '/dvd_slideshow') {
-        const applied = applyDvdSlideshowMode();
-        addSystemMessage(formatCommandExecutionMessage('/dvd_slideshow', applied ? 'executed' : 'failed'), { repeatCount: dvdSlideshowSources.length });
-        return true;
-      }
-
-      if (command === '/spawn') {
-        const opened = await openSpawnPicker();
-        addSystemMessage(formatCommandExecutionMessage('/spawn', opened ? 'executed' : 'failed'));
-        return true;
-      }
-
-      if (command === '/exit') {
-        addSystemMessage(formatCommandExecutionMessage('/exit'));
-        if (isEmbeddedInIndex()) {
-          postToParentPage({ type: 'pageExit' });
-        } else {
-          const escaped = [
-            '            .ed\"\"\"\" \"\"\"$$$$be.',
-            '          -\"           ^\"\"**$$$e.',
-            '        .\"                   \'$$$c',
-            '       /                      \"4$$b',
-            '      d  3                      $$$$',
-            '      $  *                   .$$$$$$',
-            '     .$  ^c           $$$$$e$$$$$$$$.',
-            '     d$L  4.         4$$$$$$$$$$$$$$b',
-            '     $$$$b ^ceeeee.  4$$ECL.F*$$$$$$$',
-            '     $$$$P d$$$$F $ $$$$$$$$$- $$$$$$',
-            '     3$$$F \"$$$$b   $\"$$$$$$$  $$$$*\"',
-            '      $$P\"  \"$$b   .$ $$$$$...e$$',
-            '       *c    ..    $$ 3$$$$$$$$$$eF',
-            '         %ce\"    $$$  $$$$$$$$$$*',
-            '          *$e.    \"$  $$$$$$$$$P',
-            '           $$$      4J$$$$$$$\"',
-            '          $\"$   $\"*$$$$$$$$$B',
-            '          $  \"F\"   ^*$$$$$$$*',
-            '           $\"     .d$$$$$$$',
-            '           ^%ceeed$$$$$$$$$*',
-            '              \"\"\"*$$$$$$$$$*',
-            '                   ^\"\"\"\"\"',
-            '',
-            'BOOT STATUS: PAGE FATALITY',
-            'CAUSE: USER EXECUTED /exit',
-            'RESULT: you killed the page',
-            '',
-            'Manual reboot required.',
-            'Refresh the page like a peasant.'
-          ].join('\n');
-
-          document.documentElement.innerHTML = `
-            <head>
-              <meta charset="UTF-8" />
-              <title>/dead/experiments/chat-sandbox/</title>
-              <style>
-                html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-                body { display: flex; align-items: flex-start; justify-content: flex-start; padding: 24px; color: #00ff66; font-family: "Courier New", Courier, monospace; background:
-                  radial-gradient(circle at 20% 20%, rgba(255, 0, 80, 0.28), transparent 28%),
-                  radial-gradient(circle at 80% 25%, rgba(0, 255, 120, 0.24), transparent 26%),
-                  radial-gradient(circle at 50% 80%, rgba(0, 140, 255, 0.24), transparent 30%),
-                  #000; }
-                pre { margin: 0; white-space: pre; font-size: clamp(10px, 1.35vw, 16px); line-height: 1.1; color: #00ff66; text-shadow: 0 0 8px rgba(0, 255, 102, 0.35); background: rgba(0, 0, 0, 0.38); padding: 18px 20px 30px 20px; box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.18), inset 0 0 24px rgba(0, 0, 0, 0.45); }
-              </style>
-            </head>
-            <body><pre>${escaped}</pre></body>
-          `;
-        }
-        return true;
-      }
-
-      if (command === '/color_invert') {
-        if (colorPartyEnabled) {
-          setColorPartyEnabled(false);
-        }
-        const enabled = isEmbeddedInIndex()
-          ? (postToParentPage({ type: 'pageGlobalColorInvertToggle' }), null)
-          : toggleGlobalColorInvert();
-        addSystemMessage(formatCommandExecutionMessage('/color_invert', (enabled === null ? 'toggled' : (enabled ? 'enabled' : 'disabled'))));
-        return true;
-      }
-
-      if (command === '/color_hueshift') {
-        if (colorPartyEnabled) {
-          setColorPartyEnabled(false);
-        }
-        const enabled = isEmbeddedInIndex()
-          ? (postToParentPage({ type: 'pageGlobalHueShiftToggle' }), null)
-          : toggleGlobalHueShift();
-        addSystemMessage(formatCommandExecutionMessage('/color_hueshift', (enabled === null ? 'toggled' : (enabled ? 'enabled' : 'disabled'))));
-        return true;
-      }
-
-      if (command === '/color_party') {
-        const enabled = setColorPartyEnabled(!colorPartyEnabled);
-        addSystemMessage(formatCommandExecutionMessage('/color_party', enabled ? 'enabled' : 'disabled'));
-        return true;
-      }
-
-      if (command === '/customize') {
-        addSystemMessage(formatCommandExecutionMessage('/customize'));
-        addMessage(createCustomizeMessageNode(), 'system');
-        return true;
-      }
-
-      if (command === '/stop') {
-        const wasShuffleRunning = autoShuffleIntervalId !== null;
-        const wasScriptRunning = !!(activeScriptRun && !activeScriptRun.done);
-        const wasHueShiftEnabled = globalHueShiftEnabled;
-        const wasColorInvertEnabled = globalColorInvertEnabled;
-        const wasColorPartyEnabled = colorPartyEnabled;
-        if (wasColorPartyEnabled) {
-          setColorPartyEnabled(false);
-        }
-        stopAutoShuffleColors();
-        if (wasHueShiftEnabled) {
-          freezeGlobalHueShiftAtCurrentAngle();
-        }
-        setGlobalColorInvert(false);
-        if (isEmbeddedInIndex()) {
-          postToParentPage({ type: 'pageGlobalColorInvertSet', enabled: false });
-          postToParentPage({ type: 'pageGlobalHueShiftSet', enabled: false });
-          postToParentPage({ type: 'pageCustomizeAutoShuffleSet', enabled: false });
-        }
-        if (wasScriptRunning && activeScriptRun) {
-          activeScriptRun.cancelled = true;
-        }
-        if (wasShuffleRunning || wasScriptRunning || wasHueShiftEnabled || wasColorInvertEnabled || wasColorPartyEnabled) {
-          addSystemMessage(formatCommandExecutionMessage('/stop'));
-        } else {
-          addSystemMessage('No auto color or script effects are currently running');
-        }
-        return true;
-      }
-
-      if (command === '/randomize' || command === '/color_randomize') {
-        if (colorPartyEnabled) {
-          setColorPartyEnabled(false);
-        }
-        const enableRandomize = autoShuffleIntervalId === null;
-        if (!enableRandomize) {
-          stopAutoShuffleColors();
-          // ADDED: Keep page-side randomization in sync with chat-side /randomize when embedded in index.html.
-          if (isEmbeddedInIndex()) {
-            postToParentPage({ type: 'pageCustomizeAutoShuffleSet', enabled: false });
-          }
-          addSystemMessage(formatCommandExecutionMessage('/color_randomize', 'disabled'));
-        } else {
-          startAutoShuffleColors();
-          // ADDED: Trigger the parent page's Customize Page auto-shuffle on the same interval without changing UI.
-          if (isEmbeddedInIndex()) {
-            postToParentPage({ type: 'pageCustomizeSetRandomizeTintOpacities' });
-            postToParentPage({ type: 'pageCustomizeAutoShuffleSet', enabled: true });
-          }
-          addSystemMessage(formatCommandExecutionMessage('/color_randomize', 'enabled'));
-        }
-        return true;
-      }
-
-      if (command === '/color_reset') {
-        setColorPartyEnabled(false);
-        applyCustomizeDefaults();
-        if (isEmbeddedInIndex()) {
-          postToParentPage({ type: 'pageGlobalEffectsReset' });
-        }
-        addSystemMessage(formatCommandExecutionMessage('/color_reset'));
-        return true;
-      }
-
-      if (command === '/settings_save') {
-        downloadSettingsFile();
-        addSystemMessage(formatCommandExecutionMessage('/settings_save'));
-        return true;
-      }
-
-      if (command === '/screenshot') {
-        try {
-          await captureVisiblePageScreenshot();
-        } catch (error) {
-          console.error(error);
-          addSystemMessage('Unable to save page screenshot');
-        }
-        return true;
-      }
-
-      if (command === '/screenshot_animation') {
-        try {
-          screenshotAnimationActive = true;
-          chatBar.value = '';
-          updateChatBarVisualState();
-          historyIndex = -1;
-          historyDraft = '';
-          resetCommandCycle();
-          chatBarWrap.classList.remove('visible');
-          document.body.classList.remove('chat-open');
-          disarmChatInput();
-          chatBar.blur();
-          notifyParentChatSandboxState();
-          await captureVisiblePageAnimation();
-        } catch (error) {
-          screenshotAnimationActive = false;
-          console.error(error);
-          addSystemMessage('Unable to save page animation frames');
-        }
-        return true;
-      }
-
-      if (command === '/settings_load') {
-        triggerSettingsLoad();
-        addSystemMessage(formatCommandExecutionMessage('/settings_load'));
-        return true;
-      }
-
-      if (command === '/script_load') {
-        triggerScriptLoad();
-        addSystemMessage(formatCommandExecutionMessage('/script_load'));
-        return true;
-      }
-
-      if (command === '/iframe') {
-        const rawUrl = trimmed.slice(parts[0].length).trim();
-        const sanitizedUrl = sanitizeUrl(rawUrl);
-        if (!sanitizedUrl) {
-          addSystemMessage('Invalid iframe URL. Use /iframe https://example.com/');
-          return true;
-        }
-        addSystemMessage(formatCommandExecutionMessage('/iframe'));
-        addMessage(createIframeMessageNode(sanitizedUrl), 'system');
-        return true;
-      }
-
-      if (command === '/upload_folder') {
-        triggerGenericFolderUpload();
-        return true;
-      }
-
-      if (command === '/upload_file') {
-        triggerGenericUpload();
         return true;
       }
 
@@ -6960,33 +6616,11 @@ function createHomepageCustomizeMessageNode(result = {}) {
         return true;
       }
 
-      if (command === '/refresh') {
-        try {
-          if (window.parent && window.parent !== window) {
-            window.parent.location.reload();
-          } else if (window.top && window.top !== window) {
-            window.top.location.reload();
-          } else {
-            triggerIndexRefresh();
-          }
-        } catch (error) {
-          triggerIndexRefresh();
-        }
-        return true;
-      }
-
-      if (pageCommand) {
-        dispatchPageCommand(command, raw, parts.slice(1));
-        return true;
-      }
-
       return false;
     }
 
 
     const INNERAI_ASSISTANT_NAME = 'InnerAI';
-    const INNERAI_MAX_TURNS = 24;
-    const inneraiConversation = [];
 
     function setMessageRawContent(line, content, role = 'user') {
       if (!line) return;
@@ -7003,38 +6637,19 @@ function createHomepageCustomizeMessageNode(result = {}) {
       }
     }
 
-    function rememberInnerAIMessage(role, content) {
-      const normalizedRole = role === 'assistant' ? 'assistant' : 'user';
-      const normalizedContent = String(content || '').trim();
-      if (!normalizedContent) return;
-      inneraiConversation.push({
-        role: normalizedRole,
-        content: normalizedContent
-      });
-      while (inneraiConversation.length > INNERAI_MAX_TURNS) {
-        inneraiConversation.shift();
-      }
-    }
-
     async function askInnerAI(userText, pendingLine) {
-      const outboundMessages = [
-        ...inneraiConversation,
-        {
-          role: 'user',
-          content: userText
-        }
-      ];
+      const payload = {
+        message: userText
+      };
 
       try {
+        console.log("[InnerAI API payload]", payload);
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            message: userText,
-            messages: outboundMessages
-          })
+          body: JSON.stringify(payload)
         });
 
         let data = {};
@@ -7049,8 +6664,6 @@ function createHomepageCustomizeMessageNode(result = {}) {
         }
 
         const reply = String(data.reply || '').trim() || '[empty response]';
-        rememberInnerAIMessage('user', userText);
-        rememberInnerAIMessage('assistant', reply);
         setMessageRawContent(pendingLine, `${INNERAI_ASSISTANT_NAME}: ${reply}`, 'user');
       } catch (error) {
         console.error(error);
@@ -7448,7 +7061,7 @@ function createHomepageCustomizeMessageNode(result = {}) {
           inputMode: event.data.inputMode || ''
         });
         refreshVisibleHelpMessages();
-        initialWelcomeMessage = normalizeWelcomeMessage(event.data.welcomeMessage || DEFAULT_WELCOME_MESSAGE);
+        initialWelcomeMessage = normalizeWelcomeMessage(event.data.welcomeMessage || getDefaultWelcomeMessage());
         if (chatBarWrap.classList.contains('visible')) {
           ensureInitialWelcomeMessage();
           requestAnimationFrame(scrollToBottom);
@@ -7458,7 +7071,7 @@ function createHomepageCustomizeMessageNode(result = {}) {
 
       if (event.data.type === 'pageChatClear') {
         setPageCommands({ commands: [], pageOnly: false, pageId: '', title: '', sourceKey: '' });
-        initialWelcomeMessage = DEFAULT_WELCOME_MESSAGE;
+        initialWelcomeMessage = getDefaultWelcomeMessage();
         if (chatBarWrap.classList.contains('visible')) {
           ensureInitialWelcomeMessage();
           requestAnimationFrame(scrollToBottom);
