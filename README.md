@@ -4,7 +4,7 @@ Private OpenAI API interface deployed on Render and protected by Cloudflare Acce
 
 ## Files
 
-- `server.js` serves the app, blocks direct `innerai.onrender.com` host access, and handles `/api/chat`.
+- `server.js` serves the app on both the custom domain and direct Render hostname, and handles `/api/chat` plus `/api/title`.
 - `public/index.html` is the extracted `/dead/experiments/chat-sandbox/index.html` adapted to run standalone and call `/api/chat`.
 - `package.json` defines the Node/Express/OpenAI dependencies.
 
@@ -32,8 +32,9 @@ Allowed hosts are:
 ```txt
 innerai.me
 www.innerai.me
+innerai.onrender.com
 localhost:3000
 127.0.0.1:3000
 ```
 
-The direct Render hostname should return `Forbidden.`
+The direct Render hostname is allowed. To add more domains without editing code, set `ALLOWED_HOSTS` in Render to a comma-separated list, for example `preview.example.com,staging.example.com`.

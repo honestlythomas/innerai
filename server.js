@@ -5,17 +5,28 @@ import OpenAI from "openai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const ALLOWED_HOSTS = new Set([
+const DEFAULT_ALLOWED_HOSTS = [
   "innerai.me",
   "www.innerai.me",
+  "innerai.onrender.com",
   "localhost:3000",
   "127.0.0.1:3000"
-]);
+];
+
+function getAllowedHosts() {
+  const extraHosts = (process.env.ALLOWED_HOSTS || "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase().replace(/\.$/, ""))
+    .filter(Boolean);
+
+  return new Set([...DEFAULT_ALLOWED_HOSTS, ...extraHosts]);
+}
 
 app.use((req, res, next) => {
   const host = (req.headers.host || "").toLowerCase().replace(/\.$/, "");
+  const allowedHosts = getAllowedHosts();
 
-  if (!ALLOWED_HOSTS.has(host)) {
+  if (!allowedHosts.has(host)) {
     return res.status(403).send("Forbidden.");
   }
 
